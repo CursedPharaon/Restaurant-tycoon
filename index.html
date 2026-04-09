@@ -2,13 +2,14 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Ресторанный Магнат - 3D Бизнес Симулятор</title>
     <style>
         body {
             margin: 0;
             overflow: hidden;
             font-family: 'Segoe UI', 'Poppins', 'Montserrat', sans-serif;
+            touch-action: none; /* Отключаем стандартные жесты браузера */
         }
         
         /* Интерфейс поверх 3D */
@@ -41,6 +42,7 @@
             padding: 8px 18px;
             border-radius: 40px;
             font-size: 1.2rem;
+            flex-wrap: wrap;
         }
         
         .stat {
@@ -49,14 +51,9 @@
             gap: 8px;
         }
         
-        .stat span:first-child {
-            font-size: 1.3rem;
-        }
-        
         .money {
             color: #ffd966;
             font-weight: bold;
-            text-shadow: 0 0 5px rgba(0,0,0,0.5);
         }
         
         .level {
@@ -71,12 +68,13 @@
             padding: 10px 20px;
             border-radius: 60px;
             cursor: pointer;
-            transition: 0.2s;
+            transition: 0.1s;
             display: flex;
             align-items: center;
             gap: 12px;
             box-shadow: 0 5px 0 #0f1a2e;
             font-weight: bold;
+            touch-action: manipulation;
         }
         
         .phone-btn:active {
@@ -88,7 +86,9 @@
             position: absolute;
             bottom: 100px;
             right: 20px;
-            width: 320px;
+            left: 20px;
+            max-width: 340px;
+            margin: 0 auto;
             background: #1e1e2f;
             border-radius: 32px;
             padding: 20px;
@@ -98,8 +98,6 @@
             background: rgba(30,30,47,0.95);
             border-left: 4px solid gold;
             box-shadow: 0 20px 35px black;
-            transition: 0.2s;
-            font-size: 0.9rem;
             pointer-events: auto;
         }
         
@@ -119,7 +117,8 @@
             border-radius: 40px;
             font-weight: bold;
             cursor: pointer;
-            transition: 0.1s;
+            touch-action: manipulation;
+            font-size: 1rem;
         }
         
         .modal button:active {
@@ -155,21 +154,24 @@
             font-size: 1.2rem;
             font-weight: bold;
             cursor: pointer;
+            touch-action: manipulation;
         }
         
         .notification {
             position: absolute;
             top: 20px;
             right: 20px;
+            left: 20px;
             background: #2e7d64;
             padding: 12px 20px;
             border-radius: 40px;
             color: white;
             font-weight: bold;
             z-index: 25;
-            transition: 0.3s;
             pointer-events: none;
             opacity: 0;
+            text-align: center;
+            font-size: 0.9rem;
         }
         
         @keyframes fadeOut {
@@ -178,9 +180,24 @@
         }
         
         @media (max-width: 700px) {
-            .stats { font-size: 0.8rem; gap: 12px; padding: 5px 12px;}
-            .phone-btn { padding: 6px 14px; font-size: 1.2rem;}
+            .stats { font-size: 0.75rem; gap: 10px; padding: 5px 12px;}
+            .phone-btn { padding: 8px 16px; font-size: 1.3rem;}
             .ui-panel { padding: 12px; flex-direction: column; align-items: stretch;}
+            .stat span:first-child { font-size: 1rem; }
+        }
+        
+        /* Подсказка для телефона */
+        .touch-hint {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            background: rgba(0,0,0,0.6);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            color: #ccc;
+            z-index: 10;
+            pointer-events: none;
         }
     </style>
 </head>
@@ -202,18 +219,20 @@
         <button id="phoneButton" class="phone-btn">📱 МЕНЕДЖЕР</button>
     </div>
     
+    <div class="touch-hint">🖐️ Тащите палец по экрану — вращение | ✌️ Щипок — приблизить/отдалить</div>
+    
     <div id="phoneModal" class="modal" style="display: none;">
         <h3>📞 БИЗНЕС-ЦЕНТР</h3>
-        <button id="upgradeLevelBtn">✨ Улучшить ресторан (Ур.2: 2500$)</button>
-        <button id="orderSuppliesBtn">🚚 Заказать доставку ингредиентов (800$)</button>
-        <button id="advertisingBtn">📢 Реклама (+30% гостей) (1200$)</button>
-        <button id="sellBusinessBtn">💸 ПРОДАТЬ БИЗНЕС (+10000$)</button>
+        <button id="upgradeLevelBtn">✨ Улучшить ресторан</button>
+        <button id="orderSuppliesBtn">🚚 Заказать доставку (800$)</button>
+        <button id="advertisingBtn">📢 Реклама (1200$)</button>
+        <button id="sellBusinessBtn">💸 ПРОДАТЬ БИЗНЕС</button>
         <button id="closeModalBtn" class="close-modal">✖️ Закрыть</button>
     </div>
     
     <div id="notification" class="notification">✨ Событие</div>
 
-    <!-- Загрузка Three.js и Pyodide -->
+    <!-- Загрузка Three.js -->
     <script type="importmap">
         {
             "imports": {
@@ -222,7 +241,6 @@
         }
     </script>
     
-    <script src="https://cdn.jsdelivr.net/pyodide/v0.26.1/full/pyodide.js"></script>
     <script type="module">
         import * as THREE from 'three';
         
@@ -231,36 +249,32 @@
         scene.background = new THREE.Color(0x050b1a);
         scene.fog = new THREE.FogExp2(0x050b1a, 0.008);
         
+        // Камера с настройками для телефона
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.set(5, 3.5, 6);
-        camera.lookAt(0, 1, 0);
         
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.shadowMap.enabled = true; // тени для красоты
+        renderer.shadowMap.enabled = true;
         renderer.setPixelRatio(window.devicePixelRatio);
         document.body.appendChild(renderer.domElement);
         
         // Освещение
-        // Ambient
         const ambientLight = new THREE.AmbientLight(0x404060);
         scene.add(ambientLight);
-        // Главный свет
         const mainLight = new THREE.DirectionalLight(0xfff5e0, 1.2);
         mainLight.position.set(4, 6, 3);
         mainLight.castShadow = true;
         mainLight.receiveShadow = true;
         scene.add(mainLight);
-        // Заполняющий теплый
         const fillLight = new THREE.PointLight(0xccaa77, 0.5);
         fillLight.position.set(2, 3, 2);
         scene.add(fillLight);
-        // Свет сзади
         const backLight = new THREE.PointLight(0x6688aa, 0.4);
         backLight.position.set(-2, 2, -3);
         scene.add(backLight);
         
-        // Пол (деревянный)
+        // Пол
         const floorMat = new THREE.MeshStandardMaterial({ color: 0x8b5a2b, roughness: 0.6, metalness: 0.1 });
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(12, 10), floorMat);
         floor.rotation.x = -Math.PI / 2;
@@ -268,14 +282,14 @@
         floor.receiveShadow = true;
         scene.add(floor);
         
-        // Декоративные плитки (ковровая дорожка)
+        // Ковровая дорожка
         const runnerMat = new THREE.MeshStandardMaterial({ color: 0xb5651d, roughness: 0.4 });
         const runner = new THREE.Mesh(new THREE.BoxGeometry(3, 0.03, 6), runnerMat);
         runner.position.set(0, -0.02, -0.5);
         runner.receiveShadow = true;
         scene.add(runner);
         
-        // Столы и стулья (создадим несколько)
+        // Столы и стулья
         const tableMat = new THREE.MeshStandardMaterial({ color: 0xc9a87c, roughness: 0.3, metalness: 0.1 });
         const chairMat = new THREE.MeshStandardMaterial({ color: 0xd6b17e, roughness: 0.5 });
         const tablePositions = [
@@ -287,13 +301,11 @@
             table.castShadow = true;
             table.receiveShadow = true;
             scene.add(table);
-            // Стол-столешница
             const top = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 0.1, 24), new THREE.MeshStandardMaterial({ color: 0xe0b07a, roughness: 0.2 }));
             top.position.set(pos[0], pos[1] + 0.65, pos[2]);
             top.castShadow = true;
             scene.add(top);
             
-            // стулья вокруг (по 2)
             const chairOffsets = [[0.6, 0.45], [-0.6, 0.45], [0.45, -0.6], [-0.45, -0.6]];
             chairOffsets.forEach(off => {
                 const chair = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 0.45), chairMat);
@@ -310,14 +322,13 @@
         barCounter.castShadow = true;
         scene.add(barCounter);
         
-        // Стойка с вывеской
+        // Задняя стена с вывеской
         const backWall = new THREE.Mesh(new THREE.BoxGeometry(8, 2.5, 0.2), new THREE.MeshStandardMaterial({ color: 0x5e3a1f }));
         backWall.position.set(0, 1.3, -3.5);
         backWall.receiveShadow = true;
         scene.add(backWall);
         
-        // Динамическая вывеска (будет меняться в зависимости от ресторана)
-        let signText = "🍕 PIZZA HOUSE";
+        // Вывеска
         const signCanvas = document.createElement('canvas');
         const ctx = signCanvas.getContext('2d');
         signCanvas.width = 512;
@@ -341,7 +352,7 @@
             signTexture.needsUpdate = true;
         }
         
-        // Парящие частицы (атмосфера)
+        // Частицы
         const particleCount = 300;
         const particlesGeometry = new THREE.BufferGeometry();
         const particlePositions = new Float32Array(particleCount * 3);
@@ -355,20 +366,129 @@
         const particles = new THREE.Points(particlesGeometry, particleMat);
         scene.add(particles);
         
-        // Анимация камеры (лёгкое покачивание)
-        let time = 0;
+        // ---------- СЕНСОРНОЕ УПРАВЛЕНИЕ ДЛЯ ТЕЛЕФОНА ----------
+        let targetRotationX = 0;   // Вращение по горизонтали
+        let targetRotationY = 0.3; // Наклон (немного вниз)
+        let targetDistance = 7;     // Расстояние камеры от центра
         
-        // ---------- БИЗНЕС ЛОГИКА (JS) ----------
+        let currentRotationX = 0;
+        let currentRotationY = 0.3;
+        let currentDistance = 7;
+        
+        let lastTouchX = 0;
+        let lastTouchY = 0;
+        let initialDistance = 0;
+        let initialDistanceValue = 7;
+        let isTouching = false;
+        let isTwoFinger = false;
+        
+        const center = new THREE.Vector3(0, 1.2, 0);
+        
+        function updateCameraPosition() {
+            // Плавное сглаживание
+            currentRotationX += (targetRotationX - currentRotationX) * 0.1;
+            currentRotationY += (targetRotationY - currentRotationY) * 0.1;
+            currentDistance += (targetDistance - currentDistance) * 0.08;
+            
+            // Ограничиваем угол наклона, чтобы не улететь под пол
+            const clampedY = Math.max(0.1, Math.min(0.8, currentRotationY));
+            
+            const x = Math.sin(currentRotationX) * currentDistance;
+            const z = Math.cos(currentRotationX) * currentDistance;
+            const y = clampedY * currentDistance * 0.6;
+            
+            camera.position.set(x, y + 1.2, z);
+            camera.lookAt(center);
+        }
+        
+        // Обработка касаний
+        renderer.domElement.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touches = e.touches;
+            
+            if (touches.length === 1) {
+                isTouching = true;
+                isTwoFinger = false;
+                lastTouchX = touches[0].clientX;
+                lastTouchY = touches[0].clientY;
+            } else if (touches.length === 2) {
+                isTwoFinger = true;
+                isTouching = false;
+                const dx = touches[0].clientX - touches[1].clientX;
+                const dy = touches[0].clientY - touches[1].clientY;
+                initialDistance = Math.sqrt(dx * dx + dy * dy);
+                initialDistanceValue = targetDistance;
+            }
+        });
+        
+        renderer.domElement.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touches = e.touches;
+            
+            if (touches.length === 1 && isTouching && !isTwoFinger) {
+                const deltaX = touches[0].clientX - lastTouchX;
+                const deltaY = touches[0].clientY - lastTouchY;
+                
+                targetRotationX += deltaX * 0.008;
+                targetRotationY += deltaY * 0.005;
+                
+                // Ограничиваем наклон
+                targetRotationY = Math.max(0.1, Math.min(0.8, targetRotationY));
+                
+                lastTouchX = touches[0].clientX;
+                lastTouchY = touches[0].clientY;
+            } 
+            else if (touches.length === 2 && isTwoFinger) {
+                const dx = touches[0].clientX - touches[1].clientX;
+                const dy = touches[0].clientY - touches[1].clientY;
+                const currentDistanceTouch = Math.sqrt(dx * dx + dy * dy);
+                
+                if (initialDistance > 0) {
+                    const scale = currentDistanceTouch / initialDistance;
+                    let newDistance = initialDistanceValue * scale;
+                    newDistance = Math.max(3.5, Math.min(12, newDistance));
+                    targetDistance = newDistance;
+                }
+            }
+        });
+        
+        renderer.domElement.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            if (e.touches.length === 0) {
+                isTouching = false;
+                isTwoFinger = false;
+            } else if (e.touches.length === 1) {
+                isTouching = true;
+                isTwoFinger = false;
+                lastTouchX = e.touches[0].clientX;
+                lastTouchY = e.touches[0].clientY;
+            }
+        });
+        
+        // Блокируем контекстное меню на канвасе
+        renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+        
+        // Гости (маленькие сферы)
+        const guestGroup = new THREE.Group();
+        scene.add(guestGroup);
+        const guestMeshes = [];
+        for(let i=0;i<25;i++) {
+            const guest = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12,12), new THREE.MeshStandardMaterial({ color: 0xf0c0a0, emissive: 0x442200 }));
+            guest.userData = { speed: 0.002 + Math.random()*0.003, index: i };
+            guestGroup.add(guest);
+            guestMeshes.push(guest);
+        }
+        
+        // ---------- БИЗНЕС ЛОГИКА ----------
         let money = 5000;
         let level = 1;
         let customers = 0;
-        let baseIncome = 1.2; // $ в секунду за гостя
+        let baseIncome = 1.2;
         let incomeMultiplier = 1.0;
-        let currentRestaurant = "pizza"; // pizza, sushi, burger
+        let currentRestaurant = "pizza";
         let orderEffect = 1.0;
         let adEffect = 1.0;
         
-        // Элементы интерфейса
         const moneySpan = document.getElementById('moneyDisplay');
         const levelSpan = document.getElementById('levelDisplay');
         const customersSpan = document.getElementById('customersDisplay');
@@ -399,7 +519,7 @@
             incomeSpan.innerText = totalIncome.toFixed(1);
         }
         
-        // Игровой цикл дохода раз в секунду
+        // Игровой цикл
         setInterval(() => {
             let income = baseIncome * customers * incomeMultiplier * orderEffect;
             money += income;
@@ -407,7 +527,6 @@
             updateUI();
         }, 1000);
         
-        // Вспомогательная функция изменения вывески и стиля ресторана (цветовая гамма)
         function setRestaurantTheme(type) {
             currentRestaurant = type;
             if(type === "pizza") {
@@ -425,66 +544,64 @@
             }
         }
         
-        // Выбор ресторана при старте
+        // Выбор ресторана
         document.getElementById('selectPizza').onclick = () => {
-            currentRestaurant = "pizza";
             setRestaurantTheme("pizza");
             document.getElementById('restoSelector').style.display = 'none';
-            showNotify("🍕 Пиццерия открыта! Нанимайте персонал через телефон.", true);
+            showNotify("🍕 Пиццерия открыта!", true);
             updateUI();
         };
         document.getElementById('selectSushi').onclick = () => {
-            currentRestaurant = "sushi";
             setRestaurantTheme("sushi");
             document.getElementById('restoSelector').style.display = 'none';
-            showNotify("🍣 Суши-бар готов к приему гостей!", true);
+            showNotify("🍣 Суши-бар готов!", true);
             updateUI();
         };
         document.getElementById('selectBurger').onclick = () => {
-            currentRestaurant = "burger";
             setRestaurantTheme("burger");
             document.getElementById('restoSelector').style.display = 'none';
-            showNotify("🍔 Бургерная ждет посетителей!", true);
+            showNotify("🍔 Бургерная открыта!", true);
             updateUI();
         };
         
-        // Телефон модальное окно
-        const phoneBtn = document.getElementById('phoneButton');
-        phoneBtn.onclick = () => {
+        // Телефон
+        document.getElementById('phoneButton').onclick = () => {
             phoneModal.style.display = 'block';
         };
         document.getElementById('closeModalBtn').onclick = () => {
             phoneModal.style.display = 'none';
         };
         
-        // Действия в телефоне
         document.getElementById('upgradeLevelBtn').onclick = () => {
             let cost = 2500 + (level-1)*800;
             if(money >= cost && level < 8) {
                 money -= cost;
                 level++;
                 incomeMultiplier = 1 + (level-1)*0.15;
-                showNotify(`✨ Улучшено до ${level} уровня! Доход +15%`, true);
+                showNotify(`✨ Улучшено до ${level} уровня!`, true);
                 updateUI();
             } else {
-                showNotify("❌ Не хватает денег или максимальный уровень!", false);
+                showNotify("❌ Не хватает денег!", false);
             }
             phoneModal.style.display = 'none';
+            // Обновляем текст кнопки
+            const nextCost = 2500 + (level)*800;
+            document.getElementById('upgradeLevelBtn').innerHTML = `✨ Улучшить ресторан (Ур.${level+1}: ${nextCost}$)`;
         };
         
         document.getElementById('orderSuppliesBtn').onclick = () => {
             if(money >= 800) {
                 money -= 800;
-                orderEffect = 1.35;  // временный бафф на 45 секунд
-                showNotify("🚚 Свежие ингредиенты! +35% к доходу на 45 секунд", true);
+                orderEffect = 1.35;
+                showNotify("🚚 Доставка! +35% дохода на 45 сек", true);
                 setTimeout(() => {
                     orderEffect = 1.0;
-                    showNotify("🍽 Эффект доставки закончился", false);
+                    showNotify("Эффект доставки закончился", false);
                     updateUI();
                 }, 45000);
                 updateUI();
             } else {
-                showNotify("Недостаточно средств для заказа!", false);
+                showNotify("Не хватает 800$!", false);
             }
             phoneModal.style.display = 'none';
         };
@@ -493,15 +610,15 @@
             if(money >= 1200) {
                 money -= 1200;
                 adEffect = 1.3;
-                showNotify("📢 Рекламная кампания! +30% гостей на 60 секунд", true);
+                showNotify("📢 Реклама! +30% гостей на 60 сек", true);
                 setTimeout(() => {
                     adEffect = 1.0;
-                    showNotify("📉 Реклама закончилась", false);
+                    showNotify("Реклама закончилась", false);
                     updateUI();
                 }, 60000);
                 updateUI();
             } else {
-                showNotify("Нужно 1200$ на рекламу!", false);
+                showNotify("Нужно 1200$!", false);
             }
             phoneModal.style.display = 'none';
         };
@@ -509,28 +626,12 @@
         document.getElementById('sellBusinessBtn').onclick = () => {
             let sellValue = 10000 + level * 1200;
             money += sellValue;
-            showNotify(`💸 Бизнес продан за ${sellValue}$! Инвесторы довольны.`, true);
+            showNotify(`💸 Продано за ${sellValue}$!`, true);
             updateUI();
             phoneModal.style.display = 'none';
         };
         
-        // Вспомогательная функция для имитации гостей на 3D (появление маленьких сфер)
-        const guestGroup = new THREE.Group();
-        scene.add(guestGroup);
-        const guestMeshes = [];
-        for(let i=0;i<25;i++) {
-            const guest = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12,12), new THREE.MeshStandardMaterial({ color: 0xf0c0a0, emissive: 0x442200 }));
-            guest.userData = { speed: 0.002 + Math.random()*0.003, offsetX: (Math.random() - 0.5)*5, offsetZ: (Math.random() - 0.5)*4 };
-            guestGroup.add(guest);
-            guestMeshes.push(guest);
-        }
-        
-        // Цветные блики на стенах
-        const spotLight = new THREE.SpotLight(0xffaa66, 0.5);
-        spotLight.position.set(1, 2.5, 2);
-        scene.add(spotLight);
-        
-        // --- Анимация, смена гостей в зависимости от кол-ва
+        // Анимация гостей
         function animateGuests() {
             const activeCount = Math.min(customers, guestMeshes.length);
             for(let i=0;i<guestMeshes.length;i++) {
@@ -546,50 +647,33 @@
             }
         }
         
-        // Запуск рендера + Pyodide (не обязателен, но оставим для расширения. Используем просто Three)
-        // Pyodide можно активировать для расширенных вычислений, но в данной игре он не критичен, пусть будет загружен для вида.
-        async function loadPyodideAndStuff() {
-            let pyodide = await loadPyodide();
-            await pyodide.runPythonAsync(`
-import js
-print("Pyodide активен! Можем расширять игру на Python")
-            `);
-            console.log("Pyodide готов, но основная логика на JS");
-        }
-        loadPyodideAndStuff().catch(e=>console.warn);
-        
-        // Рендер цикл
+        // Рендер-цикл
         function animate() {
             requestAnimationFrame(animate);
-            time += 0.008;
-            // легкое движение камеры для живости
-            camera.position.x += (Math.sin(time*0.2)*0.05 - (camera.position.x-5))*0.02;
-            camera.position.z += (Math.cos(time*0.17)*0.03 - (camera.position.z-6))*0.02;
-            camera.lookAt(0, 1.2, 0);
             
+            updateCameraPosition();
             particles.rotation.y += 0.002;
             animateGuests();
-            updateUI(); // часто обновляем гостей
+            updateUI();
+            
             renderer.render(scene, camera);
         }
         
         animate();
         
-        // Адаптация окна
-        window.addEventListener('resize', onWindowResize, false);
+        window.addEventListener('resize', onWindowResize);
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
         
-        // Начальный UI
+        // Стартовые настройки
         updateUI();
         setRestaurantTheme("pizza");
         
-        // Небольшой стартовый бонус через 2 секунды
         setTimeout(() => {
-            showNotify("💡 Совет: нажмите 'МЕНЕДЖЕР' для развития бизнеса!", true);
+            showNotify("💡 Тащите палец по экрану — осмотрите ресторан!", true);
         }, 2000);
     </script>
 </body>
